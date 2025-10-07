@@ -65,21 +65,30 @@ class SaveImageToS3R2:
     OUTPUT_NODE = True
 
     def save_image_to_s3r2(self, images, region, endpoint_url, aws_ak, aws_sk, session_token, s3_bucket, pathname, prompt=None, extra_pnginfo=None):
-        client = awss3_init_client(region, aws_ak, aws_sk, session_token, endpoint_url)
-        results = list()
-        for (batch_number, image) in enumerate(images):
-            i = 255. * image.cpu().numpy()
-            img = Image.fromarray(np.clip(i, 0, 255).astype(np.uint8))
-            img_byte_arr = io.BytesIO()
-            img.save(img_byte_arr, format='PNG')
-            img_byte_arr.seek(0)  # Сбрасываем указатель в начало буфера
-            awss3_save_file(client, s3_bucket, "%s_%i.png"%(pathname, batch_number), img_byte_arr)
-            results.append({
-                "filename": "%s_%i.png"%(pathname, batch_number),
-                "subfolder": "",
-                "type": "output"
-            })
-        return { "ui": { "images": results } }
+        try:
+            client = awss3_init_client(region, aws_ak, aws_sk, session_token, endpoint_url)
+            results = list()
+            for (batch_number, image) in enumerate(images):
+                i = 255. * image.cpu().numpy()
+                img = Image.fromarray(np.clip(i, 0, 255).astype(np.uint8))
+                img_byte_arr = io.BytesIO()
+                img.save(img_byte_arr, format='PNG')
+                img_byte_arr.seek(0)  # Сбрасываем указатель в начало буфера
+                
+                # Получаем размер данных для отладки
+                data = img_byte_arr.getvalue()
+                print(f"Размер данных изображения: {len(data)} байт")
+                
+                awss3_save_file(client, s3_bucket, "%s_%i.png"%(pathname, batch_number), data)
+                results.append({
+                    "filename": "%s_%i.png"%(pathname, batch_number),
+                    "subfolder": "",
+                    "type": "output"
+                })
+            return { "ui": { "images": results } }
+        except Exception as e:
+            print(f"Ошибка при сохранении в S3/R2: {e}")
+            return { "ui": { "images": [] } }
 
 # LoadImageFromS3R2
 class LoadImageFromS3R2:
