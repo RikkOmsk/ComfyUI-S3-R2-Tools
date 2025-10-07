@@ -72,6 +72,7 @@ class SaveImageToS3R2:
             img = Image.fromarray(np.clip(i, 0, 255).astype(np.uint8))
             img_byte_arr = io.BytesIO()
             img.save(img_byte_arr, format='PNG')
+            img_byte_arr.seek(0)  # Сбрасываем указатель в начало буфера
             awss3_save_file(client, s3_bucket, "%s_%i.png"%(pathname, batch_number), img_byte_arr)
             results.append({
                 "filename": "%s_%i.png"%(pathname, batch_number),
