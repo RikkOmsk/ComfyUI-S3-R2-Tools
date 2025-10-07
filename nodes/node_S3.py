@@ -16,25 +16,41 @@ def awss3_load_file(client, bucket, key):
     outfile.seek(0)
     return outfile
 
-def awss3_init_client(region="us-east-1", ak=None, sk=None, session=None):
+def awss3_init_client(region="us-east-1", ak=None, sk=None, session=None, endpoint_url=None):
     client = None
+    client_kwargs = {'region_name': region}
+    
+    # Добавляем endpoint если указан
+    if endpoint_url:
+        client_kwargs['endpoint_url'] = endpoint_url
+    
     if (ak == None and sk == None) and session == None:
-        client = boto3.client('s3', region_name=region)
+        client = boto3.client('s3', **client_kwargs)
     elif (ak != None and sk != None) and session == None:
-        client = boto3.client('s3', region_name=region, aws_access_key_id=ak, aws_secret_access_key=sk)
+        client_kwargs.update({
+            'aws_access_key_id': ak, 
+            'aws_secret_access_key': sk
+        })
+        client = boto3.client('s3', **client_kwargs)
     elif (ak != None and sk != None) and session != None:
-        client = boto3.client('s3', region_name=region, aws_access_key_id=ak, aws_secret_access_key=sk, aws_session_token=session)
+        client_kwargs.update({
+            'aws_access_key_id': ak, 
+            'aws_secret_access_key': sk, 
+            'aws_session_token': session
+        })
+        client = boto3.client('s3', **client_kwargs)
     else:
-        client = boto3.client('s3')
+        client = boto3.client('s3', **client_kwargs)
     return client
 
 
-# SaveImageToS3
-class SaveImageToS3:
+# SaveImageToS3R2
+class SaveImageToS3R2:
     @classmethod
     def INPUT_TYPES(s):
         return {"required": { "images": ("IMAGE",), 
                              "region": ("STRING", {"multiline": False, "default": "us-east-1"}),
+                             "endpoint_url": ("STRING", {"multiline": False, "default": ""}),
                              "aws_ak": ("STRING", {"multiline": False, "default": ""}),
                              "aws_sk": ("STRING", {"multiline": False, "default": ""}),
                              "session_token": ("STRING", {"multiline": False, "default": ""}),
@@ -44,12 +60,12 @@ class SaveImageToS3:
                 "hidden": {"prompt": "PROMPT", "extra_pnginfo": "EXTRA_PNGINFO"},
                 }
     RETURN_TYPES = ()
-    FUNCTION = "save_image_to_s3"
+    FUNCTION = "save_image_to_s3r2"
     CATEGORY = "image"
     OUTPUT_NODE = True
 
-    def save_image_to_s3(self, images, region, aws_ak, aws_sk, session_token, s3_bucket, pathname, prompt=None, extra_pnginfo=None):
-        client = awss3_init_client(region, aws_ak, aws_sk, session_token)
+    def save_image_to_s3r2(self, images, region, endpoint_url, aws_ak, aws_sk, session_token, s3_bucket, pathname, prompt=None, extra_pnginfo=None):
+        client = awss3_init_client(region, aws_ak, aws_sk, session_token, endpoint_url)
         results = list()
         for (batch_number, image) in enumerate(images):
             i = 255. * image.cpu().numpy()
@@ -64,11 +80,12 @@ class SaveImageToS3:
             })
         return { "ui": { "images": results } }
 
-# LoadImageFromS3
-class LoadImageFromS3:
+# LoadImageFromS3R2
+class LoadImageFromS3R2:
     @classmethod
     def INPUT_TYPES(s):
         return {"required": {"region": ("STRING", {"multiline": False, "default": "us-east-1"}),
+                             "endpoint_url": ("STRING", {"multiline": False, "default": ""}),
                              "aws_ak": ("STRING", {"multiline": False, "default": ""}),
                              "aws_sk": ("STRING", {"multiline": False, "default": ""}),
                              "session_token": ("STRING", {"multiline": False, "default": ""}),
@@ -79,11 +96,11 @@ class LoadImageFromS3:
 
     RETURN_TYPES = ("IMAGE",)
     OUTPUT_IS_LIST = (False, )
-    FUNCTION = "load_image_from_s3"
+    FUNCTION = "load_image_from_s3r2"
     CATEGORY = "image"
 
-    def load_image_from_s3(self, region, aws_ak, aws_sk, session_token, s3_bucket, pathname):
-        client = awss3_init_client(region, aws_ak, aws_sk, session_token)
+    def load_image_from_s3r2(self, region, endpoint_url, aws_ak, aws_sk, session_token, s3_bucket, pathname):
+        client = awss3_init_client(region, aws_ak, aws_sk, session_token, endpoint_url)
         img = Image.open(awss3_load_file(client, s3_bucket, pathname))
         output_images = []
         output_masks = []
