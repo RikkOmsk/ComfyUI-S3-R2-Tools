@@ -55,7 +55,9 @@ class SaveImageToS3R2:
                              "aws_sk": ("STRING", {"multiline": False, "default": ""}),
                              "session_token": ("STRING", {"multiline": False, "default": ""}),
                              "s3_bucket": ("STRING", {"multiline": False, "default": "s3_bucket"}),
-                             "pathname": ("STRING", {"multiline": False, "default": "pathname for file"})
+                             "pathname": ("STRING", {"multiline": False, "default": "pathname for file"}),
+                             "format": (["PNG", "JPG"], {"default": "JPG"}),
+                             "jpg_quality": ("INT", {"default": 85, "min": 1, "max": 100, "step": 1})
                              },
                 "hidden": {"prompt": "PROMPT", "extra_pnginfo": "EXTRA_PNGINFO"},
                 }
@@ -64,24 +66,45 @@ class SaveImageToS3R2:
     CATEGORY = "image"
     OUTPUT_NODE = True
 
-    def save_image_to_s3r2(self, images, region, endpoint_url, aws_ak, aws_sk, session_token, s3_bucket, pathname, prompt=None, extra_pnginfo=None):
+    def save_image_to_s3r2(self, images, region, endpoint_url, aws_ak, aws_sk, session_token, s3_bucket, pathname, format, jpg_quality, prompt=None, extra_pnginfo=None):
         try:
             client = awss3_init_client(region, aws_ak, aws_sk, session_token, endpoint_url)
             results = list()
             for (batch_number, image) in enumerate(images):
                 i = 255. * image.cpu().numpy()
                 img = Image.fromarray(np.clip(i, 0, 255).astype(np.uint8))
+                
+                # Конвертируем в RGB для JPG (JPG не поддерживает альфа-канал)
+                if format == "JPG" and img.mode in ('RGBA', 'LA', 'P'):
+                    # Создаем белый фон для прозрачных областей
+                    background = Image.new('RGB', img.size, (255, 255, 255))
+                    if img.mode == 'P':
+                        img = img.convert('RGBA')
+                    background.paste(img, mask=img.split()[-1] if img.mode == 'RGBA' else None)
+                    img = background
+                elif format == "JPG" and img.mode != 'RGB':
+                    img = img.convert('RGB')
+                
                 img_byte_arr = io.BytesIO()
-                img.save(img_byte_arr, format='PNG')
+                
+                if format == "JPG":
+                    # Оптимальные настройки для JPG сжатия
+                    img.save(img_byte_arr, format='JPEG', quality=jpg_quality, optimize=True, progressive=True)
+                    file_extension = "jpg"
+                else:
+                    img.save(img_byte_arr, format='PNG', optimize=True)
+                    file_extension = "png"
+                
                 img_byte_arr.seek(0)  # Сбрасываем указатель в начало буфера
                 
                 # Получаем размер данных для отладки
                 data = img_byte_arr.getvalue()
-                print(f"Размер данных изображения: {len(data)} байт")
+                print(f"Размер данных изображения ({format}): {len(data)} байт")
                 
-                awss3_save_file(client, s3_bucket, "%s_%i.png"%(pathname, batch_number), data)
+                filename = "%s_%i.%s" % (pathname, batch_number, file_extension)
+                awss3_save_file(client, s3_bucket, filename, data)
                 results.append({
-                    "filename": "%s_%i.png"%(pathname, batch_number),
+                    "filename": filename,
                     "subfolder": "",
                     "type": "output"
                 })
@@ -125,6 +148,7 @@ class LoadImageFromS3R2:
                 mask = np.array(i.getchannel('A')).astype(np.float32) / 255.0
                 mask = 1. - torch.from_numpy(mask)
             else:
+                # Для JPG файлов создаем пустую маску (JPG не поддерживает альфа-канал)
                 mask = torch.zeros((64,64), dtype=torch.float32, device="cpu")
             output_images.append(image)
             output_masks.append(mask.unsqueeze(0))
