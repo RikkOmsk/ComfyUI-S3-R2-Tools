@@ -74,39 +74,25 @@ class SaveImageToS3R2:
                 i = 255. * image.cpu().numpy()
                 img = Image.fromarray(np.clip(i, 0, 255).astype(np.uint8))
                 
-                # Удаляем все метаданные (EXIF, IPTC, XMP, Prompt и т.д.)
-                # Создаем новое чистое изображение без метаданных
-                if format == "JPG":
-                    if img.mode in ('RGBA', 'LA', 'P'):
-                        # Создаем белый фон для прозрачных областей
-                        background = Image.new('RGB', img.size, (255, 255, 255))
-                        if img.mode == 'P':
-                            img = img.convert('RGBA')
-                        background.paste(img, mask=img.split()[-1] if img.mode == 'RGBA' else None)
-                        img = background
-                    elif img.mode != 'RGB':
-                        img = img.convert('RGB')
-                else:
-                    # Для PNG сохраняем оригинальный режим, но удаляем метаданные
-                    pass
-                
-                # Создаем полностью чистое изображение без метаданных
-                # Конвертируем в массив и обратно - это полностью удаляет все метаданные
-                # включая EXIF, IPTC, XMP, Prompt и другие данные
-                img_array = np.array(img)
-                img_clean = Image.fromarray(img_array)
+                # Конвертируем в RGB для JPG (JPG не поддерживает альфа-канал)
+                if format == "JPG" and img.mode in ('RGBA', 'LA', 'P'):
+                    # Создаем белый фон для прозрачных областей
+                    background = Image.new('RGB', img.size, (255, 255, 255))
+                    if img.mode == 'P':
+                        img = img.convert('RGBA')
+                    background.paste(img, mask=img.split()[-1] if img.mode == 'RGBA' else None)
+                    img = background
+                elif format == "JPG" and img.mode != 'RGB':
+                    img = img.convert('RGB')
                 
                 img_byte_arr = io.BytesIO()
                 
                 if format == "JPG":
                     # Оптимальные настройки для JPG сжатия
-                    # Не передаем exif параметр - файл будет без метаданных
-                    img_clean.save(img_byte_arr, format='JPEG', quality=jpg_quality, optimize=True, progressive=True)
+                    img.save(img_byte_arr, format='JPEG', quality=jpg_quality, optimize=True, progressive=True)
                     file_extension = "jpg"
                 else:
-                    # Для PNG также не сохраняем метаданные
-                    # Не передаем pnginfo и другие метаданные
-                    img_clean.save(img_byte_arr, format='PNG', optimize=True)
+                    img.save(img_byte_arr, format='PNG', optimize=True)
                     file_extension = "png"
                 
                 img_byte_arr.seek(0)  # Сбрасываем указатель в начало буфера
